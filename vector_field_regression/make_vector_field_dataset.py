@@ -5,6 +5,10 @@ import os
 from dataclasses import dataclass
 from simple_parsing import ArgumentParser
 
+from tqdm import tqdm
+
+import time
+
 from matplotlib import rcParams, rc
 from matplotlib.gridspec import GridSpec
 import matplotlib.patches as patches
@@ -50,7 +54,7 @@ def set_rc_params(fontsize=None):
 set_rc_params(fontsize=28)
 
 
-def create_synthetic_vector_field(n_samples, noise_level, dataset_type="spiral"):
+def create_synthetic_vector_field(n_samples, noise_level, dataset_type="spiral-fixed"):
     """
     Create a synthetic vector field dataset that follows specific equivariant properties.
     
@@ -72,6 +76,13 @@ def create_synthetic_vector_field(n_samples, noise_level, dataset_type="spiral")
         xx, yy = np.meshgrid(x, y)
         input_positions = np.column_stack([xx.flatten(), yy.flatten()])
         n_samples = input_positions.shape[0]  # update in case we rounded
+    elif dataset_type == "spiral-fixed":
+        theta = np.linspace(0, 2*np.pi, int(np.sqrt(n_samples)))
+        x = np.cos(theta)
+        y = np.sin(theta)
+        xx, yy = np.meshgrid(x, y)
+        input_positions = np.column_stack([xx.flatten(), yy.flatten()])
+        n_samples = input_positions.shape[0]
     else:
         # use random points
         input_positions = np.random.uniform(-5, 5, size=(n_samples, 2))
@@ -90,17 +101,22 @@ def create_synthetic_vector_field(n_samples, noise_level, dataset_type="spiral")
         # siral vector field (rotational + radial)
         rot_matrix = np.matrix([[0,1], [-1,0]])
         vector_field = np.zeros_like(input_positions)
-        for i, pos in enumerate(input_positions):
+        #for i, pos in enumerate(input_positions):
+        for i, pos in tqdm(enumerate(input_positions), total=len(input_positions), desc="Processing"):
             x, y = pos
             #  r = np.sqrt(x**2 + y**2) + 1e-6  # Avoid division by zero
             r = 1
-            vector_field[i, 0] = -y/r - 0.3*x/r
-            vector_field[i, 1] = x/r - 0.3*y/r
-            arc = np.array([vector_field[i, 0],  vector_field[i, 1]])
+            #vector_field[i, 0] = -y/r - 0.3*x/r
+            #vector_field[i, 1] = x/r - 0.3*y/r
+            #arc = np.array([vector_field[i, 0],  vector_field[i, 1]])
+            arc = np.array([x, y])
             res = np.dot(rot_matrix, arc)
             #  print(np.array(res)[0][0])
             vector_field[i, 0] = np.array(res)[0][0]
             vector_field[i, 1] = np.array(res)[0][1]
+
+            norm_vector = np.linalg.norm(vector_field[i])
+            vector_field[i] = vector_field[i] / norm_vector
 
             #  vector_field[i, 0] = np.dot(rot_matrix, vector_field[i,0])
             #  vector_field[i, 1] = np.dot(rot_matrix, vector_field[i,1])
@@ -167,8 +183,11 @@ if __name__ == '__main__':
     save_dir = args.options.save_dir
     
     # create dataset
+    start_time = time.time()
     input_positions, vector_field = create_synthetic_vector_field(
         n_samples, noise, dataset_type)
+    end_time = time.time()
+    print(f"Time taken to create dataset: {end_time - start_time:.2f} seconds")
     
     # create directory if it doesn't exist
     if not os.path.exists(save_dir):

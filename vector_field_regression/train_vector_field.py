@@ -1,55 +1,54 @@
 import numpy as np
-import jax
-import jax.numpy as jnp
-import e3nn_jax as e3nn
-from e3nn_jax import IrrepsArray
-import optax
+import torch
+
 import os
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from simple_parsing import ArgumentParser
-from models import CorrectEquivariantVectorFieldModel, IncorrectEquivariantVectorFieldModel, MLPVectorFieldModel
+from models import SO2MLP
+import time
 
-# Loss functions
-def mse_loss(params, model, batch_input, batch_target):
-    mu, sigma_sq = model.apply(params, batch_input)
-    if isinstance(mu, IrrepsArray):
-        mu_array = mu.array
-        target_array = batch_target.array if hasattr(batch_target, 'array') else batch_target
-    else:
-        mu_array = mu
-        target_array = batch_target
-    return jnp.mean((mu_array - target_array) ** 2)
+from escnn import gspaces
+from escnn import nn
+from escnn import group
 
-def nll_loss(params, model, batch_input, batch_target):
-    mu, sigma_sq = model.apply(params, batch_input)
-    if isinstance(mu, IrrepsArray):
-        mu_array = mu.array
-        sigma_sq_array = sigma_sq.array
-        target_array = batch_target.array if hasattr(batch_target, 'array') else batch_target
-    else:
-        mu_array = mu
-        sigma_sq_array = sigma_sq
-        target_array = batch_target
-    return jnp.mean(((mu_array - target_array) ** 2 / (2 * sigma_sq_array)) + 0.5 * jnp.log(sigma_sq_array))
+def set_all_seeds(seed: int = 10): 
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
 
-def beta_nll_loss(params, model, batch_input, batch_target, beta=1.0):
-    mu, sigma_sq = model.apply(params, batch_input)
-    if isinstance(mu, IrrepsArray):
-        mu_array = mu.array
-        sigma_sq_array = sigma_sq.array
-        target_array = batch_target.array if hasattr(batch_target, 'array') else batch_target
-    else:
-        mu_array = mu
-        sigma_sq_array = sigma_sq
-        target_array = batch_target
-    sigma_sq_array_beta = jax.lax.stop_gradient(sigma_sq_array) ** beta
-    return jnp.mean(sigma_sq_array_beta *(((mu_array - target_array) ** 2 / (2 * sigma_sq_array)) + 0.5 * jnp.log(sigma_sq_array)))
+def beta_nll_loss(mean, variance, target, beta=1.0):
+    """Compute beta-NLL loss
 
-def combined_loss(params, model, batch_input, batch_target, beta=1.0):
-    return mse_loss(params, model, batch_input, batch_target) + beta_nll_loss(params, model, batch_input, batch_target, beta=beta)
+    :param mean: Predicted mean of shape B x D
+    :param variance: Predicted variance of shape B x D
+    :param target: Target of shape B x D
+    :param beta: Parameter from range [0, 1] controlling relative
+        weighting between data points, where `0` corresponds to
+        high weight on low error points and `1` to an equal weighting.
+    :returns: Loss per batch element of shape B
+    """
+    loss = 0.5 * ((target - mean) ** 2 / variance + variance.log())
 
-def train_model(model, model_type, key, input_positions, vector_field, n_holdout, 
+    if beta > 0:
+        loss = loss * (variance.detach() ** beta)
+
+    return loss.sum(axis=-1)
+
+def mse_loss(mean, target):
+    """Compute MSE loss
+
+    :param mean: Predicted mean of shape B x D
+    :param target: Target of shape B x D
+    :returns: Loss per batch element of shape B
+    """
+    return 0.5 * ((target - mean) ** 2).sum(axis=-1)
+
+def combined_loss(mean, variance, target, beta=1.0):
+    return beta_nll_loss(mean, variance, target, beta) + mse_loss(mean, target)
+
+def train_model(model, input_positions, vector_field, n_holdout, 
                 minimum_epochs, maximum_epochs_no_improve, maximum_epochs, 
                 batch_size, train_val_split, beta, save_dir):
     """
@@ -70,7 +69,6 @@ def train_model(model, model_type, key, input_positions, vector_field, n_holdout
         beta: Weight for the beta-NLL loss
         save_dir: Directory to save results
     """
-    key, subkey = jax.random.split(key)
     n_samples = input_positions.shape[0]
     
     # Split data into train, validation, and test sets
@@ -80,148 +78,84 @@ def train_model(model, model_type, key, input_positions, vector_field, n_holdout
     n_train = int(n_train_val * train_val_split)
     n_val = n_train_val - n_train
     
-    perm = jax.random.permutation(subkey, jnp.arange(n_samples))
+    perm = torch.randperm(n_samples)
     train_indices = perm[:n_train]
     val_indices = perm[n_train:n_train + n_val]
     test_indices = perm[n_train_val:]
     
-    # Process inputs and targets based on model type
-    is_equivariant = model_type in ['correct_equivariant', 'incorrect_equivariant']
+    train_inputs = input_positions[train_indices]
+    train_targets = vector_field[train_indices]
     
-    if is_equivariant:
-        # For equivariant models, we need to pad with zeros for the z-dimension
-        # and convert to IrrepsArray
-        input_positions_padded = jnp.pad(input_positions, ((0, 0), (0, 1)), mode="constant")
-        vector_field_padded = jnp.pad(vector_field, ((0, 0), (0, 1)), mode="constant")
-        
-        # Set up input and output irreps for 3D (with z=0)
-        input_irreps = e3nn.Irreps("1x1e")
-        output_irreps = e3nn.Irreps("1x1e")
-        
-        # Convert to IrrepsArray
-        train_inputs = IrrepsArray(input_irreps, input_positions_padded[train_indices])
-        train_targets = IrrepsArray(output_irreps, vector_field_padded[train_indices])
-        
-        val_inputs = IrrepsArray(input_irreps, input_positions_padded[val_indices])
-        val_targets = IrrepsArray(output_irreps, vector_field_padded[val_indices])
-        
-        test_inputs = IrrepsArray(input_irreps, input_positions_padded[test_indices])
-        test_targets = IrrepsArray(output_irreps, vector_field_padded[test_indices])
-    else:
-        # For standard MLP, we use the raw inputs
-        train_inputs = input_positions[train_indices]
-        train_targets = vector_field[train_indices]
-        
-        val_inputs = input_positions[val_indices]
-        val_targets = vector_field[val_indices]
-        
-        test_inputs = input_positions[test_indices]
-        test_targets = vector_field[test_indices]
+    val_inputs = input_positions[val_indices]
+    val_targets = vector_field[val_indices]
     
-    # Initialize model and optimizer
-    dummy_input = train_inputs[:1]
-    parameters = model.init(key, dummy_input)
-    optimizer = optax.adam(1e-3)
-    opt_state = optimizer.init(parameters)
+    test_inputs = input_positions[test_indices]
+    test_targets = vector_field[test_indices]
     
-    # Training loop
-    best_val_loss = jnp.inf
+    best_val_loss = torch.finfo(torch.float32).max
     epochs_no_improve = 0
-    best_parameters = parameters
     
     train_losses = []
     val_losses = []
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     
     for epoch in range(maximum_epochs):
-        key, subkey = jax.random.split(key)
         train_loss = 0
         
-        # Shuffle training data
-        train_indices_epoch = jax.random.permutation(subkey, jnp.arange(n_train))
-        
-        # Mini-batch training
         for i in range(0, n_train, batch_size):
-            batch_indices = train_indices_epoch[i:i+batch_size]
+            batch_indices = train_indices[i:i+batch_size]
             batch_inputs = train_inputs[batch_indices]
             batch_targets = train_targets[batch_indices]
+
+            mean, variance = model(batch_inputs)
+
+            loss = combined_loss(mean, variance, batch_targets)
+            loss = loss.mean()
+            train_loss = loss.item()
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
             
-            loss, grad = jax.value_and_grad(combined_loss)(
-                parameters, model, batch_inputs, batch_targets, beta)
-            
-            updates, opt_state = optimizer.update(grad, opt_state)
-            parameters = optax.apply_updates(parameters, updates)
-            train_loss += loss
         
         train_loss /= np.ceil(n_train / batch_size)
         
-        # Validate
-        val_prediction_mu, val_prediction_sigma_sq = model.apply(parameters, val_inputs)
+        val_prediction_mu, val_prediction_sigma_sq = model(val_inputs)
         
-        # Extract arrays from IrrepsArray if needed
-        if isinstance(val_prediction_mu, IrrepsArray):
-            val_prediction_mu_array = val_prediction_mu.array
-            val_prediction_sigma_sq_array = val_prediction_sigma_sq.array
-            val_targets_array = val_targets.array if hasattr(val_targets, 'array') else val_targets
-        else:
-            val_prediction_mu_array = val_prediction_mu
-            val_prediction_sigma_sq_array = val_prediction_sigma_sq
-            val_targets_array = val_targets
         
-        val_loss = jnp.mean((val_prediction_mu_array - val_targets_array) ** 2)
+        val_loss = combined_loss(val_prediction_mu, val_prediction_sigma_sq, val_targets).mean().item()
         
         train_losses.append(float(train_loss))
         val_losses.append(float(val_loss))
         
-        # Early stopping check
         if epoch >= minimum_epochs:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_no_improve = 0
-                # Save best model parameters
-                best_parameters = parameters
             else:
                 epochs_no_improve += 1
                 
             if epochs_no_improve > maximum_epochs_no_improve:
                 print(f"Early stopping at epoch {epoch}")
-                parameters = best_parameters  # Use the best parameters
                 break
         
         print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}")
     
-    # Test the model
-    test_prediction_mu, test_prediction_sigma_sq = model.apply(parameters, test_inputs)
-    
-    # Extract arrays from IrrepsArray if needed
-    if isinstance(test_prediction_mu, IrrepsArray):
-        test_prediction_mu_array = test_prediction_mu.array
-        test_prediction_sigma_sq_array = test_prediction_sigma_sq.array
-        test_targets_array = test_targets.array if hasattr(test_targets, 'array') else test_targets
-    else:
-        test_prediction_mu_array = test_prediction_mu
-        test_prediction_sigma_sq_array = test_prediction_sigma_sq
-        test_targets_array = test_targets
-    
-    test_mse = jnp.mean((test_prediction_mu_array - test_targets_array) ** 2)
-    test_nll = jnp.mean(((test_prediction_mu_array - test_targets_array) ** 2 / (2 * test_prediction_sigma_sq_array)) + 0.5 * jnp.log(test_prediction_sigma_sq_array))
+    test_prediction_mu, test_prediction_sigma_sq = model(test_inputs)
+    test_mse = torch.mean((test_prediction_mu - test_targets) ** 2).item()
+    test_nll = beta_nll_loss(test_prediction_mu, test_prediction_sigma_sq, test_targets).mean().item()
     
     print(f"Test MSE: {test_mse:.4f}, Test NLL: {test_nll:.4f}")
     
-    # Save results
     os.makedirs(save_dir, exist_ok=True)
     
-    # Convert to numpy arrays for saving
     test_prediction_mu_np = np.array(test_prediction_mu_array)
     test_prediction_sigma_sq_np = np.array(test_prediction_sigma_sq_array)
     test_targets_np = np.array(test_targets_array)
     
-    # Get the right test inputs for saving
-    if isinstance(test_inputs, IrrepsArray) and hasattr(test_inputs, 'array'):
-        test_inputs_np = np.array(test_inputs.array)
-    else:
-        test_inputs_np = np.array(test_inputs)
-    
-    # Save predictions, targets and inputs
+    test_inputs_np = np.array(test_inputs)
+   
     np.save(f"{save_dir}/test_prediction_mu_{model_type}.npy", test_prediction_mu_np)
     np.save(f"{save_dir}/test_prediction_sigma_sq_{model_type}.npy", test_prediction_sigma_sq_np)
     np.save(f"{save_dir}/test_targets_{model_type}.npy", test_targets_np)
@@ -233,7 +167,6 @@ def train_model(model, model_type, key, input_positions, vector_field, n_holdout
     
     return {
         'model_type': model_type,
-        'parameters': parameters,
         'test_mse': float(test_mse),
         'test_nll': float(test_nll),
         'test_predictions_mu': test_prediction_mu_np,
@@ -258,8 +191,6 @@ def test_with_rotations(model, model_type, parameters, test_inputs, test_targets
     nll_results = []
     calibration_results = []
     
-    # Process inputs based on model type
-    is_equivariant = model_type in ['correct_equivariant', 'incorrect_equivariant']
     
     for angle in rotation_angles:
         # Create rotation matrix
@@ -516,14 +447,9 @@ if __name__ == "__main__":
     results_dir = args.options.results_dir
     random_seed = args.options.random_seed
     
-    # Set random seed
-    key = jax.random.PRNGKey(random_seed)
-    
-    # Create directories
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(results_dir, exist_ok=True)
     
-    # Load or generate dataset
     data_file_prefix = f"{data_dir}/input_positions_{dataset_type}_{n_samples}_samples_{noise}_noise"
     if os.path.exists(f"{data_file_prefix}.npy"):
         print(f"Loading existing dataset from {data_file_prefix}")
@@ -531,65 +457,24 @@ if __name__ == "__main__":
         vector_field = np.load(f"{data_dir}/vector_field_{dataset_type}_{n_samples}_samples_{noise}_noise.npy")
     else:
         print(f"Generating new dataset of type {dataset_type}")
-        # Import the dataset creation function from the make_vector_field_dataset.py file
         from make_vector_field_dataset import create_synthetic_vector_field
         input_positions, vector_field = create_synthetic_vector_field(n_samples, noise, dataset_type)
         
-        # Save the dataset
         np.save(f"{data_file_prefix}.npy", input_positions)
         np.save(f"{data_dir}/vector_field_{dataset_type}_{n_samples}_samples_{noise}_noise.npy", vector_field)
     
-    # Create models
-    input_irreps = e3nn.Irreps("1x1e")  # 3D vector input (x,y,z with z=0)
-    output_irreps = e3nn.Irreps("1x1e")  # 3D vector output (x,y,z with z=0)
+    SO2MLP = SO2MLP()
     
-    key, subkey1, subkey2, subkey3 = jax.random.split(key, 4)
-    
-    # Create and train correct equivariant model
-    correct_model = CorrectEquivariantVectorFieldModel(
-        input_irreps=input_irreps,
-        output_irreps=output_irreps,
-        hidden_dim=hidden_dim
-    )
-    
-    print("\n--- Training Correct Equivariant Model ---")
+    print("\n--- Training SO2 Equivariant Model ---")
     correct_results = train_model(
-        correct_model, 'correct_equivariant', subkey1, input_positions, vector_field,
+        SO2MLP, input_positions, vector_field,
         n_holdout, minimum_epochs, maximum_epochs_no_improve, maximum_epochs,
         batch_size, train_val_split, beta, results_dir
     )
     
-    # Create and train incorrect equivariant model
-    incorrect_model = IncorrectEquivariantVectorFieldModel(
-        input_irreps=input_irreps,
-        output_irreps=output_irreps,
-        hidden_dim=hidden_dim
-    )
     
-    print("\n--- Training Incorrect Equivariant Model ---")
-    incorrect_results = train_model(
-        incorrect_model, 'incorrect_equivariant', subkey2, input_positions, vector_field,
-        n_holdout, minimum_epochs, maximum_epochs_no_improve, maximum_epochs,
-        batch_size, train_val_split, beta, results_dir
-    )
-    
-    # Create and train MLP model
-    mlp_model = MLPVectorFieldModel(
-        hidden_dim=hidden_dim,
-        output_dim=2  # 2D vector output (x,y)
-    )
-    
-    print("\n--- Training MLP Model ---")
-    mlp_results = train_model(
-        mlp_model, 'mlp', subkey3, input_positions, vector_field,
-        n_holdout, minimum_epochs, maximum_epochs_no_improve, maximum_epochs,
-        batch_size, train_val_split, beta, results_dir
-    )
-    
-    # Testing with rotations
     print("\n--- Testing Models with Rotations ---")
     
-    # Prepare test data for rotation tests
     test_indices = np.arange(n_samples - n_holdout, n_samples)
     
     # Test data for each model type
@@ -635,53 +520,22 @@ if __name__ == "__main__":
     print("\n--- Creating Visualizations ---")
     
     # Load predictions for visualization
-    correct_pred_mu = np.load(f"{results_dir}/test_prediction_mu_correct_equivariant.npy")
-    correct_pred_sigma_sq = np.load(f"{results_dir}/test_prediction_sigma_sq_correct_equivariant.npy")
+    SO2MLP_pred_mu = np.load(f"{results_dir}/test_prediction_mu_correct_equivariant.npy")
+    SO2MLP_pred_sigma_sq = np.load(f"{results_dir}/test_prediction_sigma_sq_correct_equivariant.npy")
     
-    incorrect_pred_mu = np.load(f"{results_dir}/test_prediction_mu_incorrect_equivariant.npy")
-    incorrect_pred_sigma_sq = np.load(f"{results_dir}/test_prediction_sigma_sq_incorrect_equivariant.npy")
-    
-    mlp_pred_mu = np.load(f"{results_dir}/test_prediction_mu_mlp.npy")
-    mlp_pred_sigma_sq = np.load(f"{results_dir}/test_prediction_sigma_sq_mlp.npy")
     
     # Visualize predictions
     visualize_predictions(
         correct_test_inputs, correct_test_targets,
-        correct_pred_mu, correct_pred_sigma_sq,
+        SO2MLP_pred_mu, SO2MLP_pred_sigma_sq,
         "Correct Equivariant Model",
-        f"{results_dir}/correct_equivariant_predictions.png"
+        f"{results_dir}/equivariant_predictions.png"
     )
     
-    visualize_predictions(
-        incorrect_test_inputs, incorrect_test_targets,
-        incorrect_pred_mu, incorrect_pred_sigma_sq,
-        "Incorrect Equivariant Model",
-        f"{results_dir}/incorrect_equivariant_predictions.png"
-    )
     
-    visualize_predictions(
-        mlp_test_inputs, mlp_test_targets,
-        mlp_pred_mu, mlp_pred_sigma_sq,
-        "MLP Model",
-        f"{results_dir}/mlp_predictions.png"
-    )
-    
-    # Plot rotation test results
     rotation_results = {
         'Correct Equivariant': correct_rotation_results,
-        'Incorrect Equivariant': incorrect_rotation_results,
-        'MLP': mlp_rotation_results
     }
     
     plot_rotation_results(rotation_results, results_dir)
     
-    print(f"\nExperiment completed. Results saved to {results_dir}")
-    print("\nTest MSE Results:")
-    print(f"  Correct Equivariant: {correct_results['test_mse']:.4f}")
-    print(f"  Incorrect Equivariant: {incorrect_results['test_mse']:.4f}")
-    print(f"  MLP: {mlp_results['test_mse']:.4f}")
-    
-    print("\nTest NLL Results:")
-    print(f"  Correct Equivariant: {correct_results['test_nll']:.4f}")
-    print(f"  Incorrect Equivariant: {incorrect_results['test_nll']:.4f}")
-    print(f"  MLP: {mlp_results['test_nll']:.4f}") 

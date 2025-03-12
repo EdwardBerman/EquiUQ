@@ -1,181 +1,122 @@
-import jax
-import jax.numpy as jnp
-import e3nn_jax as e3nn
-import flax
-import flax.linen as nn
-from e3nn_jax import IrrepsArray
 from typing import Tuple, Optional
+import torch
+import numpy as np
 
-class CorrectEquivariantVectorFieldModel(nn.Module):
-    """
-    Correct equivariant model for vector field regression.
-    Now more expressive: uses multiple equivariant layers and nonlinearities
-    while still respecting rotational equivariance.
-    """
-    input_irreps: e3nn.Irreps
-    output_irreps: e3nn.Irreps
-    hidden_dim: int
+from escnn import gspaces
+from escnn import nn
+from escnn import group
+
+class SO2MLP(nn.EquivariantModule):
     
-    def setup(self):
-        # define a hidden irreps that includes scalar (0e) and vector (1e) channels
-        self.hidden_irreps = e3nn.Irreps(f"{self.hidden_dim}x0e + {self.hidden_dim}x1e")
-        
-        # two-stage hidden transformations for both mean (mu) and variance (sigma)
-        # each path remains equivariant by using e3nn.flax.Linear (which preserves irreps).
-        self.lin_in_mu = e3nn.flax.Linear(self.hidden_irreps)
-        self.lin_hid_mu = e3nn.flax.Linear(self.hidden_irreps)
-        self.lin_out_mu = e3nn.flax.Linear(self.output_irreps)
-        
-        self.lin_in_sigma = e3nn.flax.Linear(self.hidden_irreps)
-        self.lin_hid_sigma = e3nn.flax.Linear(self.hidden_irreps)
-        self.lin_out_sigma = e3nn.flax.Linear(self.output_irreps)
+    def __init__(self, n_classes=10):
+        super(SO2MLP, self).__init__()
+        self.G = group.so2_group()
+        self.gspace = gspaces.no_base_space(self.G)
+        self.in_type = self.gspace.type(self.G.standard_representation())
 
-    def _nonlinear(self, x: IrrepsArray) -> IrrepsArray:
-        """
-        Simple equivariant nonlinearity:
-        - Apply ReLU to scalar (0e) channels.
-        - Keep vector (1e) channels unchanged.
-        """
-        scalars = x.filter(keep="0e")
-        vectors = x.filter(keep="1e")
-        
-        # ReLU on scalar part
-        scalars_activated = IrrepsArray(
-            scalars.irreps,
-            jax.nn.relu(scalars.array)
+        activation1 = nn.FourierELU(
+            self.gspace,
+            channels=2, # specify the number of signals in the output features
+            irreps=self.G.bl_regular_representation(L=1).irreps, 
+            inplace=True,
+            type='regular', N=6,   
         )
         
-        # concatenate activated scalars and original vectors
-        return e3nn.concatenate([scalars_activated, vectors], axis=-1)
-
-    def __call__(self, x: IrrepsArray) -> Tuple[IrrepsArray, IrrepsArray]:
-        # mean path
-        h_mu = self.lin_in_mu(x)
-        h_mu = self._nonlinear(h_mu)
-        h_mu = self.lin_hid_mu(h_mu)
-        h_mu = self._nonlinear(h_mu)
-        mu = self.lin_out_mu(h_mu)
-        
-        # variance path
-        h_sigma = self.lin_in_sigma(x)
-        h_sigma = self._nonlinear(h_sigma)
-        h_sigma = self.lin_hid_sigma(h_sigma)
-        h_sigma = self._nonlinear(h_sigma)
-        sigma_sq = self.lin_out_sigma(h_sigma)
-        
-        # apply softplus to ensure positive variance
-        sigma_sq_array = jax.nn.softplus(sigma_sq.array)
-        sigma_sq = IrrepsArray(sigma_sq.irreps, sigma_sq_array)
-        
-        return mu, sigma_sq
-
-class IncorrectEquivariantVectorFieldModel(nn.Module):
-    input_irreps: e3nn.Irreps
-    output_irreps: e3nn.Irreps
-    hidden_dim: int
-    
-    def setup(self):
-        self.hidden_irreps = e3nn.Irreps(f"{self.hidden_dim}x0e + {self.hidden_dim}x1e")
-
-        self.lin_in_mu = e3nn.flax.Linear(self.hidden_irreps)
-        self.lin_hid_mu = e3nn.flax.Linear(self.hidden_irreps)
-        self.lin_out_mu = e3nn.flax.Linear(self.output_irreps)
-        
-        self.lin_in_sigma = e3nn.flax.Linear(self.hidden_irreps)
-        self.lin_hid_sigma = e3nn.flax.Linear(self.hidden_irreps)
-        self.lin_out_sigma = e3nn.flax.Linear(self.output_irreps)
-        
-        # multiple non-equivariant dense layers to break rotational symmetry
-        self.non_equiv_dense1 = nn.Dense(self.hidden_dim)
-        self.non_equiv_dense2 = nn.Dense(self.hidden_dim)
-
-    def _nonlinear_equiv(self, x: IrrepsArray) -> IrrepsArray:
-        """
-        Intended as an 'equivariant' nonlinearity, but since we already 
-        introduce a break in eq elsewhere, it won't preserve overall symmetry.
-        Here we do a typical e3nn approach:
-        - ReLU on scalar (0e) channels
-        - Identity on vector (1e) channels
-        """
-        scalars = x.filter(keep="0e")
-        vectors = x.filter(keep="1e")
-        
-        # ReLU on scalar part
-        scalars_activated = IrrepsArray(
-            scalars.irreps,
-            jax.nn.relu(scalars.array)
+        self.block1_mu = nn.SequentialModule(
+            nn.Linear(self.in_type, activation1.in_type),
+            nn.IIDBatchNorm1d(activation1.in_type),
+            activation1,
         )
-        return e3nn.concatenate([scalars_activated, vectors], axis=-1)
+        
+        activation2 = nn.FourierELU(
+            self.gspace,
+            channels=8, # specify the number of signals in the output features
+            irreps=self.G.bl_regular_representation(L=3).irreps, # include all frequencies up to L=3
+            inplace=True,
+            type='regular', N=16,
+        )
+        self.block2_mu = nn.SequentialModule(
+            nn.Linear(self.block1_mu.out_type, activation2.in_type),
+            nn.IIDBatchNorm1d(activation2.in_type),
+            activation2,
+        )
+        
+        activation3 = nn.FourierELU(
+            self.gspace,
+            channels=8, # specify the number of signals in the output features
+            irreps=self.G.bl_regular_representation(L=3).irreps, # include all frequencies up to L=3
+            inplace=True,
+            type='regular', N=16,
+        )
+        self.block3_mu = nn.SequentialModule(
+            nn.Linear(self.block2_mu.out_type, activation3.in_type),
+            nn.IIDBatchNorm1d(activation3.in_type),
+            activation3,
+        )
+        
+        activation4 = nn.FourierELU(
+            self.gspace,
+            channels=5, # specify the number of signals in the output features
+            irreps=self.G.bl_regular_representation(L=2).irreps, # include all frequencies up to L=2
+            inplace=True,
+            type='regular', N=12,
+        )
+        self.block4_mu = nn.SequentialModule(
+            nn.Linear(self.block3_mu.out_type, activation4.in_type),
+            nn.IIDBatchNorm1d(activation4.in_type),
+            activation4,
+        )
+        
+        self.out_type = self.gspace.type(self.G.irrep(2))
+        self.block5_mu = nn.Linear(self.block4_mu.out_type, self.out_type)
 
-    def __call__(self, x: IrrepsArray) -> Tuple[IrrepsArray, IrrepsArray]:
-        # convert to a standard array for non-equivariant processing
-        x_array = x.array
+        self.block1_sigma_sq = nn.SequentialModule(
+            nn.Linear(self.in_type, activation1.in_type),
+            nn.IIDBatchNorm1d(activation1.in_type),
+            activation1,
+        )
+
+        self.block2_sigma_sq = nn.SequentialModule(
+            nn.Linear(self.block1_sigma_sq.out_type, activation2.in_type),
+            nn.IIDBatchNorm1d(activation2.in_type),
+            activation2,
+        )
+
+        self.block3_sigma_sq = nn.SequentialModule(
+            nn.Linear(self.block2_sigma_sq.out_type, activation3.in_type),
+            nn.IIDBatchNorm1d(activation3.in_type),
+            activation3,
+        )
+
+        self.block4_sigma_sq = nn.SequentialModule(
+            nn.Linear(self.block3_sigma_sq.out_type, activation4.in_type),
+            nn.IIDBatchNorm1d(activation4.in_type),
+            activation4,
+        )
+
+        self.block5_sigma_sq = nn.Linear(self.block4_sigma_sq.out_type, self.out_type)
+    
+    def forward(self, x: nn.GeometricTensor):
         
-        # pass through multiple non-equivariant layers
-        # this step breaks rotational equivariance by ignoring irreps structure
-        h = self.non_equiv_dense1(x_array)
-        h = jax.nn.relu(h)
-        h = self.non_equiv_dense2(h)
-        h = jax.nn.relu(h)
+        assert x.type == self.in_type
+        mu = self.block1_mu(x)
+        mu = self.block2_mu(mu)
+        mu = self.block3_mu(mu)
+        mu = self.block4_mu(mu)
+        mu = self.block5_mu(mu)
         
-        # introduce a small non-equivariant perturbation to the original x
-        x_broken_array = x_array + 0.1 * h[:, : x_array.shape[-1]]
-        
-        # convert the broken array back to an IrrepsArray
-        x_broken = IrrepsArray(x.irreps, x_broken_array)
-        
-        # proceed with "equivariant" transformations :D
-        h_mu = self.lin_in_mu(x_broken)
-        h_mu = self._nonlinear_equiv(h_mu)
-        h_mu = self.lin_hid_mu(h_mu)
-        h_mu = self._nonlinear_equiv(h_mu)
-        mu = self.lin_out_mu(h_mu)
-        
-        # Variance path
-        h_sigma = self.lin_in_sigma(x_broken)
-        h_sigma = self._nonlinear_equiv(h_sigma)
-        h_sigma = self.lin_hid_sigma(h_sigma)
-        h_sigma = self._nonlinear_equiv(h_sigma)
-        sigma_sq = self.lin_out_sigma(h_sigma)
-        
-        # Apply softplus to ensure non-negative variance
-        sigma_sq_array = jax.nn.softplus(sigma_sq.array)
-        sigma_sq = e3nn.IrrepsArray(sigma_sq.irreps, sigma_sq_array)
-        
+        sigma_sq = self.block1_sigma_sq(x)
+        sigma_sq = self.block2_sigma_sq(sigma_sq)
+        sigma_sq = self.block3_sigma_sq(sigma_sq)
+        sigma_sq = self.block4_sigma_sq(sigma_sq)
+        sigma_sq = self.block5_sigma_sq(sigma_sq)
+        sigma_sq = torch.nn.functional.softplus(sigma_sq)
+     
         return mu, sigma_sq
 
-
-class MLPVectorFieldModel(nn.Module):
-    hidden_dim: int
-    output_dim: int = 2  # default for 2D vector field (e3nn 3d lol)
-    
-    def setup(self):
-        # mean prediction layers
-        self.linear_mu_one = nn.Dense(self.hidden_dim)
-        self.linear_mu_two = nn.Dense(self.hidden_dim)
-        self.linear_mu_three = nn.Dense(self.output_dim)
-        
-        # uncertainty prediction layers
-        self.linear_sigma_one = nn.Dense(self.hidden_dim)
-        self.linear_sigma_two = nn.Dense(self.hidden_dim)
-        self.linear_sigma_three = nn.Dense(self.output_dim)
-
-    def __call__(self, x: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        # process mean path
-        mu = self.linear_mu_one(x)
-        mu = jax.nn.relu(mu)
-        mu = self.linear_mu_two(mu)
-        mu = jax.nn.relu(mu)
-        mu = self.linear_mu_three(mu)
-        
-        # process uncertainty path
-        sigma_sq = self.linear_sigma_one(x)
-        sigma_sq = jax.nn.relu(sigma_sq)
-        sigma_sq = self.linear_sigma_two(sigma_sq)
-        sigma_sq = jax.nn.relu(sigma_sq)
-        sigma_sq = self.linear_sigma_three(sigma_sq)
-        
-        # apply softplus to ensure positive uncertainty
-        sigma_sq = jax.nn.softplus(sigma_sq)
-        
-        return mu, sigma_sq 
+    def evaluate_output_shape(self, input_shape: tuple):
+        shape = list(input_shape)
+        assert len(shape) ==2, shape
+        assert shape[1] == self.in_type.size, shape
+        shape[1] = self.out_type.size
+        return shape
