@@ -12,6 +12,8 @@ from escnn import gspaces
 from escnn import nn
 from escnn import group
 
+from torch.utils.data import DataLoader, TensorDataset, Subset
+
 def set_all_seeds(seed: int = 10): 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -69,6 +71,10 @@ def train_model(model, input_positions, vector_field, n_holdout,
         beta: Weight for the beta-NLL loss
         save_dir: Directory to save results
     """
+
+    input_positions = torch.tensor(input_positions, dtype=torch.float32)
+    vector_field = torch.tensor(vector_field, dtype=torch.float32)
+
     n_samples = input_positions.shape[0]
     
     # Split data into train, validation, and test sets
@@ -82,15 +88,16 @@ def train_model(model, input_positions, vector_field, n_holdout,
     train_indices = perm[:n_train]
     val_indices = perm[n_train:n_train + n_val]
     test_indices = perm[n_train_val:]
-    
-    train_inputs = input_positions[train_indices]
-    train_targets = vector_field[train_indices]
-    
-    val_inputs = input_positions[val_indices]
-    val_targets = vector_field[val_indices]
-    
-    test_inputs = input_positions[test_indices]
-    test_targets = vector_field[test_indices]
+
+    dataset = TensorDataset(input_positions, vector_field)
+
+    train_dataset = Subset(dataset, train_indices)
+    val_dataset = Subset(dataset, val_indices)
+    test_dataset = Subset(dataset, test_indices)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     
     best_val_loss = torch.finfo(torch.float32).max
     epochs_no_improve = 0
@@ -98,19 +105,16 @@ def train_model(model, input_positions, vector_field, n_holdout,
     train_losses = []
     val_losses = []
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
     
     for epoch in range(maximum_epochs):
         train_loss = 0
         
-        for i in range(0, n_train, batch_size):
-            batch_indices = train_indices[i:i+batch_size]
-            batch_inputs = train_inputs[batch_indices]
-            batch_targets = train_targets[batch_indices]
+        for x, y in train_loader:
+            mean, variance = model(x)
+            mean, variance = mean.tensor, variance.tensor
 
-            mean, variance = model(batch_inputs)
-
-            loss = combined_loss(mean, variance, batch_targets)
+            loss = combined_loss(mean, variance, y)
             loss = loss.mean()
             train_loss = loss.item()
 
@@ -119,12 +123,12 @@ def train_model(model, input_positions, vector_field, n_holdout,
             optimizer.step()
             
         
-        train_loss /= np.ceil(n_train / batch_size)
-        
-        val_prediction_mu, val_prediction_sigma_sq = model(val_inputs)
-        
-        
-        val_loss = combined_loss(val_prediction_mu, val_prediction_sigma_sq, val_targets).mean().item()
+        for x, y in val_loader:
+            mean, variance = model(x)
+            mean, variance = mean.tensor, variance.tensor
+
+            loss = combined_loss(mean, variance, y)
+            val_loss = loss.mean().item()
         
         train_losses.append(float(train_loss))
         val_losses.append(float(val_loss))
@@ -136,37 +140,54 @@ def train_model(model, input_positions, vector_field, n_holdout,
             else:
                 epochs_no_improve += 1
                 
-            if epochs_no_improve > maximum_epochs_no_improve:
-                print(f"Early stopping at epoch {epoch}")
-                break
+            #if epochs_no_improve > maximum_epochs_no_improve:
+             #   print(f"Early stopping at epoch {epoch}")
+              #  break
         
         print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, Val Loss = {val_loss:.4f}")
-    
-    test_prediction_mu, test_prediction_sigma_sq = model(test_inputs)
-    test_mse = torch.mean((test_prediction_mu - test_targets) ** 2).item()
-    test_nll = beta_nll_loss(test_prediction_mu, test_prediction_sigma_sq, test_targets).mean().item()
+
+    test_means = []
+    test_variances = []
+    test_targets_array = []
+    test_inputs = []
+    for x, y in test_loader:
+        mean, variance = model(x)
+        mean, variance = mean.tensor, variance.tensor
+
+        loss = combined_loss(mean, variance, y)
+        test_loss = loss.mean().item()
+        test_mse = mse_loss(mean, y).mean().item()
+        test_nll = beta_nll_loss(mean, variance, y).mean().item()
+        test_means.append(mean)
+        test_variances.append(variance)
+        test_targets_array.append(y)
+        test_inputs.append(x)
     
     print(f"Test MSE: {test_mse:.4f}, Test NLL: {test_nll:.4f}")
     
     os.makedirs(save_dir, exist_ok=True)
     
-    test_prediction_mu_np = np.array(test_prediction_mu_array)
-    test_prediction_sigma_sq_np = np.array(test_prediction_sigma_sq_array)
-    test_targets_np = np.array(test_targets_array)
-    
-    test_inputs_np = np.array(test_inputs)
+    test_means = torch.cat(test_means, dim=0)
+    test_variances = torch.cat(test_variances, dim=0)
+    test_targets_array = torch.cat(test_targets_array, dim=0)
+    test_inputs = torch.cat(test_inputs, dim=0)
+
+    test_prediction_mu_np = test_means.detach().numpy()
+    test_prediction_sigma_sq_np = test_variances.detach().numpy()
+    test_targets_np = test_targets_array.detach().numpy()
+
+    test_inputs_np = test_inputs.detach().numpy()
    
-    np.save(f"{save_dir}/test_prediction_mu_{model_type}.npy", test_prediction_mu_np)
-    np.save(f"{save_dir}/test_prediction_sigma_sq_{model_type}.npy", test_prediction_sigma_sq_np)
-    np.save(f"{save_dir}/test_targets_{model_type}.npy", test_targets_np)
-    np.save(f"{save_dir}/test_inputs_{model_type}.npy", test_inputs_np)
+    np.save(f"{save_dir}/test_prediction_mu_SO2_MLP.npy", test_prediction_mu_np)
+    np.save(f"{save_dir}/test_prediction_sigma_sq_SO2_MLP.npy", test_prediction_sigma_sq_np)
+    np.save(f"{save_dir}/test_targets_SO2_MLP.npy", test_targets_np)
+    np.save(f"{save_dir}/test_inputs_SO2_MLP.npy", test_inputs_np)
     
     # Save training history
-    np.save(f"{save_dir}/train_losses_{model_type}.npy", np.array(train_losses))
-    np.save(f"{save_dir}/val_losses_{model_type}.npy", np.array(val_losses))
+    np.save(f"{save_dir}/train_losses_SO2_MLP.npy", np.array(train_losses))
+    np.save(f"{save_dir}/val_losses_SO2_MLP.npy", np.array(val_losses))
     
     return {
-        'model_type': model_type,
         'test_mse': float(test_mse),
         'test_nll': float(test_nll),
         'test_predictions_mu': test_prediction_mu_np,
@@ -466,20 +487,21 @@ if __name__ == "__main__":
     SO2MLP = SO2MLP()
     
     print("\n--- Training SO2 Equivariant Model ---")
-    correct_results = train_model(
+    SO2MLP_results = train_model(
         SO2MLP, input_positions, vector_field,
         n_holdout, minimum_epochs, maximum_epochs_no_improve, maximum_epochs,
         batch_size, train_val_split, beta, results_dir
     )
+
+    correct_test_inputs = np.load(f"{results_dir}/test_inputs_correct_equivariant.npy")
+    correct_test_targets = np.load(f"{results_dir}/test_targets_correct_equivariant.npy")
     
-    
+    '''
     print("\n--- Testing Models with Rotations ---")
     
     test_indices = np.arange(n_samples - n_holdout, n_samples)
     
     # Test data for each model type
-    correct_test_inputs = np.load(f"{results_dir}/test_inputs_correct_equivariant.npy")
-    correct_test_targets = np.load(f"{results_dir}/test_targets_correct_equivariant.npy")
     
     incorrect_test_inputs = np.load(f"{results_dir}/test_inputs_incorrect_equivariant.npy")
     incorrect_test_targets = np.load(f"{results_dir}/test_targets_incorrect_equivariant.npy")
@@ -487,8 +509,6 @@ if __name__ == "__main__":
     mlp_test_inputs = np.load(f"{results_dir}/test_inputs_mlp.npy")
     mlp_test_targets = np.load(f"{results_dir}/test_targets_mlp.npy")
     
-    # Convert to IrrepsArray for equivariant models
-    correct_test_inputs_irreps = IrrepsArray(input_irreps, correct_test_inputs)
     correct_test_targets_irreps = IrrepsArray(output_irreps, correct_test_targets)
     
     incorrect_test_inputs_irreps = IrrepsArray(input_irreps, incorrect_test_inputs)
@@ -515,7 +535,7 @@ if __name__ == "__main__":
         mlp_test_inputs, mlp_test_targets,
         n_rotations, results_dir
     )
-    
+    '''
     # Create visualizations
     print("\n--- Creating Visualizations ---")
     
@@ -528,14 +548,14 @@ if __name__ == "__main__":
     visualize_predictions(
         correct_test_inputs, correct_test_targets,
         SO2MLP_pred_mu, SO2MLP_pred_sigma_sq,
-        "Correct Equivariant Model",
+        "SO2MLP Model",
         f"{results_dir}/equivariant_predictions.png"
     )
     
-    
+    '''
     rotation_results = {
         'Correct Equivariant': correct_rotation_results,
     }
     
     plot_rotation_results(rotation_results, results_dir)
-    
+    '''

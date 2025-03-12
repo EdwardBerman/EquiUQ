@@ -5,6 +5,9 @@ import numpy as np
 from escnn import gspaces
 from escnn import nn
 from escnn import group
+from escnn.nn import GeometricTensor
+
+from torch_geometric.data import Data, Batch
 
 class SO2MLP(nn.EquivariantModule):
     
@@ -16,7 +19,7 @@ class SO2MLP(nn.EquivariantModule):
 
         activation1 = nn.FourierELU(
             self.gspace,
-            channels=2, # specify the number of signals in the output features
+            channels=3, # specify the number of signals in the output features
             irreps=self.G.bl_regular_representation(L=1).irreps, 
             inplace=True,
             type='regular', N=6,   
@@ -96,9 +99,14 @@ class SO2MLP(nn.EquivariantModule):
 
         self.block5_sigma_sq = nn.Linear(self.block4_sigma_sq.out_type, self.out_type)
     
-    def forward(self, x: nn.GeometricTensor):
-        
-        assert x.type == self.in_type
+    def forward(self, positions: torch.Tensor):
+
+        data_list = [Data(pos=pos.unsqueeze(0)) for pos in positions]
+        batched_data = Batch.from_data_list(data_list)
+        x_tensor = batched_data.pos
+        x = GeometricTensor(x_tensor, self.in_type)
+        #x = batched_data
+
         mu = self.block1_mu(x)
         mu = self.block2_mu(mu)
         mu = self.block3_mu(mu)
@@ -110,13 +118,15 @@ class SO2MLP(nn.EquivariantModule):
         sigma_sq = self.block3_sigma_sq(sigma_sq)
         sigma_sq = self.block4_sigma_sq(sigma_sq)
         sigma_sq = self.block5_sigma_sq(sigma_sq)
-        sigma_sq = torch.nn.functional.softplus(sigma_sq)
+
+        sigma_sq_tensor = torch.nn.functional.softplus(sigma_sq.tensor)
+        sigma_sq = GeometricTensor(sigma_sq_tensor, sigma_sq.type)
      
         return mu, sigma_sq
 
     def evaluate_output_shape(self, input_shape: tuple):
-        shape = list(input_shape)
-        assert len(shape) ==2, shape
-        assert shape[1] == self.in_type.size, shape
-        shape[1] = self.out_type.size
-        return shape
+        #shape = list(input_shape)
+        #assert len(shape) ==2, shape
+        #assert shape[1] == self.in_type.size, shape
+        #shape[1] = self.out_type.size
+        return #shape
