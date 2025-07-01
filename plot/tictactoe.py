@@ -248,6 +248,11 @@ if __name__ == "__main__":
         zorder=10
     ))
 
+    fig.suptitle('Tic-Tac-Toe Q-Learning Example', fontsize=50, y=0.95)
+
+    # pad to make title higher 
+    plt.subplots_adjust(top=0.85, hspace=0.3, wspace=0.3)
+
     plt.savefig('../assets/tictactoe.pdf', bbox_inches='tight')
     plt.savefig('../assets/tictactoe.png', bbox_inches='tight')
 
