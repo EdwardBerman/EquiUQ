@@ -39,15 +39,16 @@ def set_rc_params(fontsize=None):
 
     return
 
-set_rc_params(fontsize=20)
+set_rc_params(fontsize=100)
 
 
 x = np.linspace(0, 100, 100)
 y = (9.625/x + 1e-5) + 1 
 
-plt.figure(figsize=(9, 9))
+plt.figure(figsize=(36, 36))
 plt.plot(x, y)
-plt.xlabel(r'$||\sqrt{\frac{2}{\pi}}\vec{\sigma_1}||_2^2$')
+#plt.xlabel(r'$||\sqrt{\frac{2}{\pi}}\vec{\sigma_1}||_2^2$')
+plt.xlabel(r'$||\sqrt{\frac{2}{\pi}s_1}||_2^2$')
 plt.ylabel('Upper Bound ENCE')
 plt.savefig('../assets/upper_ence.pdf')
 

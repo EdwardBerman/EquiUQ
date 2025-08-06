@@ -266,11 +266,11 @@ nx.draw(
 
 
 
-ax[0, 0].set_title(r'$CH_4 (\times)$')
-ax[0, 1].set_title(r'$CH_4 (+)$')
-ax[1, 0].set_title(r'$H_20$')
-ax[1, 1].set_title(r'$SO_2$')
-ax[2, 1].set_title(r'$NH_3$')
+ax[0, 0].set_title(r'$CH_4 (\times) , p = 0.125$')
+ax[0, 1].set_title(r'$CH_4 (+) , p = 0.125$')
+ax[1, 0].set_title(r'$H_20 , p = 0.125$')
+ax[1, 1].set_title(r'$SO_2, p = 0.125$')
+ax[2, 1].set_title(r'$NH_3 , p = 0.5$')
 
 fig.tight_layout()
 subplots_to_include = [(0, 0), (0, 1), (1, 0), (1, 1)]
@@ -352,34 +352,45 @@ ax[2, 2].plot(ammonia_spectra, color='red', label=r'$h(Orbit)$')
 ax[2, 2].legend()
 ax[2, 2].set_title(r'$NH_3$ Absorption Spectra')
 
-x = np.array([0, 1, 2, 3, 4])
-x_labels = [r'$CH_4(+)$', r'$CH_4(\times)$', r'$H_20$', r'$SO_2$', r'$NH_3$']
-y = np.array([0.125, 0.125, 0.125, 0.125, 0.5])
-ax[2,0].bar(x, y, color='lightgreen', edgecolor='black', linewidth=2)
-ax[2,0].set_xticks(x)
-ax[2,0].set_xticklabels(x_labels, fontsize=24)
-ax[2,0].set_title("Probability Density")
-ax[2,0].set_xlabel("Molecule")
-ax[2,0].set_ylabel("p(x)")
+#ax[0, 1].text(0.001, 1.05, "p = 0.125", transform=ax[0, 1].transAxes,
+#              fontsize=45, ha='left', va='top')
+
+#x = np.array([0, 1, 2, 3, 4])
+#x_labels = [r'$CH_4(+)$', r'$CH_4(\times)$', r'$H_20$', r'$SO_2$', r'$NH_3$']
+#y = np.array([0.125, 0.125, 0.125, 0.125, 0.5])
+#ax[2,0].bar(x, y, color='lightgreen', edgecolor='black', linewidth=2)
+#ax[2,0].set_xticks(x)
+#ax[2,0].set_xticklabels(x_labels, fontsize=24)
+#ax[2,0].set_title("Probability Density")
+#ax[2,0].set_xlabel("Molecule")
+#ax[2,0].set_ylabel("p(x)")
+
+ax[2, 0].axis('off')
 
 
 x = np.linspace(0, 4000, 4000)
 noise = np.random.uniform(-0.1, 0.1, 4000)
 y = np.sin(2 * np.pi * (1/2500)*x) + 1.2 + noise
-ax[0, 3].plot(x, y, color='black', label=r'$\vec{\sigma}_1$')
+#ax[0, 3].plot(x, y, color='black', label=r'$\vec{\sigma}_1$')
+ax[0, 3].plot(x, y, color='black', label=r'$s_1$')
 ax[0, 3].set_yticks([])
-ax[0, 3].set_title(r'$\vec{\sigma^2}_1$')
+#ax[0, 3].set_title(r'$\vec{\sigma^2}_1$')
+ax[0, 3].set_title(r'$s_1$')
 
-ax[1, 3].plot(x, y, color='black', label=r'$\vec{\sigma}_1$')
+#ax[1, 3].plot(x, y, color='black', label=r'$\vec{\sigma}_1$')
+ax[1, 3].plot(x, y, color='black', label=r'$s_1$')
 ax[1, 3].set_yticks([])
-ax[1, 3].set_title(r'$\vec{\sigma^2}_1$')
+#ax[1, 3].set_title(r'$\vec{\sigma^2}_1$')
+ax[1, 3].set_title(r'$s_1$')
 
 shift = 500
 y_new = (np.sin(2 * np.pi * (1/2500)*x + shift) + 1.2 + noise) - np.sqrt(2)
 
-ax[2, 3].plot(x, y_new, color='black', label=r'$\vec{\sigma}_2$')
+#ax[2, 3].plot(x, y_new, color='black', label=r'$\vec{\sigma}_2$')
+ax[2, 3].plot(x, y_new, color='black', label=r'$s_2$')
 ax[2, 3].set_yticks([])
-ax[2, 3].set_title(r'$\vec{\sigma^2}_2$')
+#ax[2, 3].set_title(r'$\vec{\sigma^2}_2$')
+ax[2, 3].set_title(r'$s_2$')
 
 print((np.linalg.norm(water_spectra - average_spectra) + np.linalg.norm(water_spectra - sulfur_dioxide_y_interpolated)) / 2)
 
