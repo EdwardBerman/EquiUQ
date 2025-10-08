@@ -6,7 +6,7 @@ This repository contains all code for `On Uncertainty Calibration for Equivarian
 
 # Running Experiments
 
-First, clone the repo (and the submodules!) via
+First, clone the repo (and the submodules!) via `git clone --recurse-submodules https://github.com/EdwardBerman/EquivariantUQBounds.git`
 
 ## Vector Field Regression
 
