@@ -72,7 +72,7 @@ node_sizes = [5000 for _ in G.nodes()]
 node_color = "lightblue"
 nx.draw(G, pos=positions, with_labels=False, node_size=node_sizes,
         node_color=node_color, ax=ax[0, 0])
-ax[0, 0].set_title(r'$CH_4 (\times)$')
+ax[0, 0].set_title(r'$a(\times), p = 0.125$', fontsize=60)
 
 # ===== CH4 (+) layout =====
 G = nx.Graph()
@@ -98,6 +98,7 @@ ax[0,1].grid(True, which='both', linestyle='--', linewidth=3)
 node_sizes = [5000 for _ in G.nodes()]
 nx.draw(G, pos=positions, with_labels=False, node_size=node_sizes,
         node_color=node_color, ax=ax[0, 1])
+ax[0, 1].set_title(r'$a(+), p = 0.125$', fontsize=60)
 
 # ===== H2O layout =====
 G = nx.Graph()
@@ -109,6 +110,7 @@ G.add_edges_from(edges)
 node_sizes = [5000 for _ in G.nodes()]
 nx.draw(G, pos=positions, with_labels=False, node_size=node_sizes,
         node_color=node_color, ax=ax[1, 0])
+ax[1, 0].set_title(r'$b, p = 0.125$', fontsize=60)
 
 # ===== SO2 layout =====
 G = nx.Graph()
@@ -120,6 +122,7 @@ G.add_edges_from(edges)
 node_sizes = [5000 for _ in G.nodes()]
 nx.draw(G, pos=positions, with_labels=False, node_size=node_sizes,
         node_color=node_color, ax=ax[1, 1])
+ax[1, 1].set_title(r'$c, p = 0.125$', fontsize=60)
 
 # ===== NH3 layout =====
 G = nx.Graph()
@@ -131,57 +134,50 @@ G.add_edges_from(edges)
 node_sizes = [5000 for _ in G.nodes()]
 nx.draw(G, pos=positions, with_labels=False, node_size=node_sizes,
         node_color=node_color, ax=ax[2, 1])
-
-# Titles
-ax[0, 0].set_title(r'$a(\times), p = 0.125$', fontsize=60)
-ax[0, 1].set_title(r'$a(+), p = 0.125$', fontsize=60)
-ax[1, 0].set_title(r'$b, p = 0.125$', fontsize=60)
-ax[1, 1].set_title(r'$c, p = 0.125$', fontsize=60)
 ax[2, 1].set_title(r'$d, p = 0.5$', fontsize=60)
+
+# ===== Analytic curves instead of numpy files =====
+# Domain for all function plots
+x = np.linspace(0, 2*np.pi, 2000)
+cos2 = np.cos(x)**2
+sin2 = np.sin(x)**2
+ones = np.ones_like(x)
+
+std_dev1 = 0.1
+std_dev2 = 0.2
+
+# Plot 1 (top-right): f(a_x)=cos^2, f(a_+)=cos^2, h(x)=cos^2
+ax[0, 2].plot(x, cos2, label=r'$f(a_{\times})$', color='black')
+ax[0, 2].plot(x, cos2, label=r'$f(a_{+})$', color='red')
+ax[0, 2].plot(x, cos2, label=r'$h(x)$', color='blue')
+ax[0, 2].fill_between(x, cos2 - std_dev1, cos2 + std_dev1,
+                    color='blue', alpha=0.2, label=r'$s=0.1 \vec{1}$')
+ax[0, 2].legend()
+ax[0, 2].set_title(r'$CH_4(+/\times)$ Function Plot')
+
+# Plot 2 (middle-right): f(b)=cos^2, f(c)=\sin^2, h(x)=1
+ax[1, 2].plot(x, cos2, label=r'$f(b)$', color='black')
+ax[1, 2].plot(x, sin2, label=r'$f(c)$', color='red')
+ax[1, 2].plot(x, 0.5*ones, label=r'$h(x)=0.5$', color='blue')
+ax[1, 2].fill_between(x, 0.5 - std_dev1, 0.5 + std_dev1,
+                    color='blue', alpha=0.2, label=r'$s=0.1 \vec{1}$')
+ax[1, 2].legend()
+ax[1, 2].set_title(r'$H_2O/SO_2$ Function Plot')
+
+# Plot 3 (bottom-right): f(d)=\sin^2, h(x)=\sin^2 (all three sin^2)
+ax[2, 2].plot(x, sin2, label=r'$f(d)$', color='black')
+ax[2, 2].plot(x, sin2, label=r'$h(x)$', color='red')
+ax[2, 2].fill_between(x, sin2 - std_dev2, sin2 + std_dev2,
+                    color='red', alpha=0.2,label=r'$s=0.2 \vec{1}$')
+ax[2, 2].legend()
+ax[2, 2].set_title(r'$NH_3$ Function Plot')
+
+# Empty bottom-left stays off
+ax[2, 0].axis('off')
 
 fig.tight_layout()
 plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.92,
                     hspace=0.3, wspace=0.3)
 
-# ===== Spectra loading & plots =====
-methane_spectra = np.load('../data/methane_spectra.npy')
-water_spectra = np.load('../data/water_spectra.npy')
-sulfur_dioxide_spectra = np.load('../data/sulfur_dioxide.npy')
-ammonia_spectra = np.load('../data/amonia_spectra.npy')
-
-sulfur_dioxide_spectra_x = sulfur_dioxide_spectra[:, 0]
-sulfur_dioxide_spectra_y = sulfur_dioxide_spectra[:, 1]
-
-methane_spectra = methane_spectra / np.max(methane_spectra)
-water_spectra = water_spectra / np.max(water_spectra)
-ammonia_spectra = ammonia_spectra / np.max(ammonia_spectra)
-
-ax[0, 2].plot(methane_spectra, color='black', label=r'f(CH$_4(+))$')
-ax[0, 2].plot(methane_spectra, color='red', label=r'$f(CH_4(\times))$')
-ax[0, 2].plot(methane_spectra, color='blue', label=r'$h(Orbit)$')
-ax[0, 2].legend()
-ax[0, 2].set_title(r'$CH_4(+/\times)$ Absorption Spectra')
-
-ax[1, 2].plot(water_spectra, color='black', label=r'f(H$_2O)$')
-ax[1, 2].plot(sulfur_dioxide_spectra_x, sulfur_dioxide_spectra_y, color='red', label=r'$f(SO_2)$')
-
-interp_function = interp1d(sulfur_dioxide_spectra_x, sulfur_dioxide_spectra_y,
-                           kind='linear', fill_value="extrapolate")
-water_x = np.linspace(500, 4000, len(water_spectra))
-sulfur_dioxide_y_interpolated = interp_function(water_x)
-average_spectra = (water_spectra + sulfur_dioxide_y_interpolated) / 2
-ax[1, 2].plot(average_spectra, color='blue', label=r'$h(Orbit)$')
-ax[1, 2].legend()
-ax[1, 2].set_title(r'$H_2O/SO_2$ Absorption Spectra')
-
-ax[2, 2].plot(ammonia_spectra, color='black', label=r'f(NH$_3)$')
-ax[2, 2].plot(ammonia_spectra, color='red', label=r'$h(Orbit)$')
-ax[2, 2].legend()
-ax[2, 2].set_title(r'$NH_3$ Absorption Spectra')
-
-ax[2, 0].axis('off')
-
-print((np.linalg.norm(water_spectra - average_spectra) +
-       np.linalg.norm(water_spectra - sulfur_dioxide_y_interpolated)) / 2)
-
 plt.savefig('../assets/pc.pdf', dpi=300)
+
