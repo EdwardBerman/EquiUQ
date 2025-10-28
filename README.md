@@ -1,6 +1,6 @@
 # On Uncertainty Calibration for Equivariant Functions
 
-This repository contains all code for `On Uncertainty Calibration for Equivariant Functions` by [Edward Berman](https://ebrmn.space/), [Jacob Ginesin](https://jakegines.in/), [Marco Pacini](https://marco-pacini.github.io/), and [Robin Walters](https://www.robinwalters.com/).
+This repository contains all code for [On Uncertainty Calibration for Equivariant Functions](https://arxiv.org/abs/2510.21691) by [Edward Berman](https://ebrmn.space/), [Jacob Ginesin](https://jakegines.in/), [Marco Pacini](https://marco-pacini.github.io/), and [Robin Walters](https://www.robinwalters.com/).
 
 ![image](assets/background.png)
 
