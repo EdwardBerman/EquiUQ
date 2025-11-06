@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Bermanator</title>
+<style>
+#showAsciiBtn {
+            background: none;
+            border: none;
+            color: lightgreen;
+            line-height: 1.5;
+            font-size: 1000px; /* Set the font size */
+            /*text-decoration: underline;*/
+            cursor: pointer;
+            padding: 0;
+            font-family: monospace;
+        }
+  #asciiArt {
+            display: none;
+            white-space: pre;
+            font-family: monospace;
+        }
+  body {
+    background-image: url('alt_astro_out.png');
+    background-size: cover; /* Cover the entire window */
+    background-position: center center; /* Center the image in the window */
+    background-attachment: fixed;
+    
+    background-color: #0a0a0a;
+    font-family: 'Courier New', Courier, monospace;
+    /*font-weight: bold; /* Make the font bolder */
+    font-size: 20px; /* Adjust this to your preferred size */
+    color: #ff3333;
+    margin: 0;
+    line-height: 1.5; /* Increase the line-height for more space between lines */
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+
+  .terminal {
+    background-color: rgba(13, 13, 13, 0.97);
+    /*background-color: #0d0d0d;*/
+    border-radius: 5px;
+    padding: 20px;
+    box-shadow: 0 0 10px rgba(255, 51, 51, 0.5);
+    width: 80%; /* Adjust the width as per your requirement */
+    max-width: 1000px; /* Optional: if you want to limit the maximum width */
+    max-height: 90vh; /* Prevent terminal from exceeding viewport height */
+    overflow: auto; /* Enable scrolling within terminal */
+  }
+
+  .terminal-header {
+    color: #fff;
+    background-color: #333;
+    padding: 2px 10px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    display: flex;
+    justify-content: start;
+    align-items: center;
+  }
+
+  .dot {
+    height: 15px;
+    width: 15px;
+    background-color: #f1c40f;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+  }
+
+  .green-dot {
+    background-color: #2ecc71;
+  }
+
+  .red-dot {
+    background-color: #e74c3c;
+  }
+
+/*
+  .terminal-body {
+    white-space: pre-wrap;
+    overflow-x: auto;
+  }
+
+  .prompt {
+    margin-bottom: 5px;
+  }
+
+  .input {
+    white-space: pre-wrap;
+    display: inline;
+  }
+  */ 
+  .prompt, .input {
+    margin: 0; /* Removes any default margins */
+    padding: 0; /* Removes any default padding */
+    display: block; /* Ensures the element is a block-level element */
+  }
+
+  .terminal-body {
+    padding-left: 20px; /* This padding will align the text with the prompt if necessary */
+    padding-right: 20px; /* Padding to prevent text from touching the right edge */
+  }
+
+  /* Remove padding-left if you added it specifically to .input in earlier styles */
+  .input {
+    white-space: pre-wrap;
+  }
+
+</style>
+</head>
+<body>
+  <div class="terminal">
+    <div class="terminal-body"> 
+      <div class="prompt">Reflections on: <b>On Uncertainty Calibration for Equivariant Functions</b> </div>
+      <br><div class="input"><b>Links</b></div> 
+      <div class="prompt">&gt; <a href="https://github.com/EdwardBerman/EquiUQ" target="_blank" style="color: #ff3333;">Code</a>, <a href="https://arxiv.org/abs/2510.21691" target="_blank" style="color: #ff3333;">arxiv</a>, <a href="https://openreview.net/pdf?id=0nFNKGp1nP" target="_blank" style="color: #ff3333;">Workshop Version (NeurReps)</a> </div> 
+      <br><div class="input"><b>Preamble</b></div> 
+      <div class="prompt">Most project pages for academic papers serve as the most consolidated version of the research project. They contain all of the relevant links to the code and paper and give a high level overview of what is contained in the paper. Instead, I want to give a little bit more of a high level intuition as to how this project came to be, and what my thoughts are going forward.</div>
+      <br><div class="input"><b>Motivation</b></div> 
+      <div class="prompt">This project was conceived from a real world problem I was trying to solve. With my collaborators at AstroAI, I was working on an emulator for chemical spectra that included uncertainty estimates. This uncertainty estimates are useful for downstream tasks such as retrieval using Hamiltonian Monte Carlo. I was at a stage where I was happy with my model's qualitative output, but I wanted to quantify this. I had recently read <a href="https://arxiv.org/abs/2303.04745" target="_blank" style="color: #ff3333;">Dian's paper</a> on approximation error bounds for equivariant functions, and I began wondering if the bounds presented in his paper could similarly be applied to the Calibration objective I was trying to meet.</div>
+      <br><div class="input"><b>Key Ideas from the Project</b></div> 
+      <div class="prompt">The key idea in this paper is that we can use approximation error bounds from Dian's paper on different confidence fibers. This allows us to say things such as "the model can be no less than X% accurate when it is Y% confident." The bounds follow by averaging these bounds over all of the confidence fibers. We show how symmetry mismatch can tighten both lower and upper calibration error bounds in different settings. Additionally, we note how models that are overconstrained by symmetry are unable to distinguish between the origin of their uncertain (aleatoric / epistemic). </div>
+      <br><div class="input"><b>Future Fun</b></div> 
+      <div class="prompt">There is more to say about how equivariant models can become more or less uncertain when the equivariance is extrinsic, or there is some covariate shift. In fact, I think there can be made a precise analogy between extrinsic equivariance and covariate shift, though it is currently escaping me. If you are interested in working on these topics, feel free to reach out.</div>
+      <br><div class="input"><b>Thank Yous</b></div> 
+      <div class="prompt">I am a fairly sentimental person! While we have yet to reach the final goal (paper is still under review at TMLR at time of writing 11/05/25), now seems as good a time as ever to share some gratitudes. My first thank you goes to Boston, and the great community within it. My work with my advisor and the co-authors on this paper started from a conversation at the Symposium on Geometry Processesing, which was serrindipitously hosted at MIT while I was a student at Northeastern. <br><br> A lot of what allowed me to dedicate significant time to this project was taking the Research Capstone option at my university. My classmates are wonderfully talented, and I truly enjoyed and appreciated them sharing their passions with me. I hope they were similarly inspired by EquiUQ :). Special shout out to my classmate and co-author Jake, who worked on this project with me despite being from an entirely different field of computer science (security / PL). <br><br>
+To that end, an enormous thanks is also owed to my awesome co-authors, as well as Shubhendu Trivedi for offering his insights down the stretch of submission.
+      </div>
+    </div>
+<a href="ascii-art.txt"></a>
+     </div>
+      </div>
+    </div>
+  </div>
+<script>
+        document.getElementById("showAsciiBtn").onclick = function() {
+            var asciiArt = document.getElementById("asciiArt");
+            asciiArt.style.display = asciiArt.style.display === "none" ? "block" : "none";
+        };
+    </script>
+</body>
+</html>
+
+
