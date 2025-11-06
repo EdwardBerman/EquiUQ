@@ -7,6 +7,7 @@ from scipy.stats import norm
 from matplotlib import rcParams, rc
 from matplotlib.gridspec import GridSpec
 import tqdm
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 def set_rc_params(fontsize=None):
     '''
@@ -48,7 +49,8 @@ def set_rc_params(fontsize=None):
 set_rc_params(fontsize=28)
 
 #files = glob.glob('../data/test/*.npy') 
-files = glob.glob('../data/final_qm9_rotated/*.npy') # final_qm9_rotated
+files = glob.glob('../data/expanded_final_qm9_rotated/*.npy') # final_qm9_rotated
+#files = glob.glob('../data/final_qm9_rotated/*.npy') # final_qm9_rotated
 grouped_files = defaultdict(list)
 pattern = re.compile(r'_(\d+)\.npy$')
 
@@ -58,12 +60,19 @@ for file in files:
         number = match.group(1)
         grouped_files[number].append(file)
 
-labels_np = np.zeros((128, 3501))
-mean_pred_np = np.zeros((128, 3501))
-al_uq_np = np.zeros((128, 3501))
-ep_uq_np = np.zeros((128, 3501))
+#labels_np = np.zeros((128, 3501))
+#mean_pred_np = np.zeros((128, 3501))
+#al_uq_np = np.zeros((128, 3501))
+#ep_uq_np = np.zeros((128, 3501))
 
-labels_augmented_np = np.zeros((128, 3501))
+#labels_augmented_np = np.zeros((128, 3501))
+
+labels_np = np.zeros((4000, 3501))
+mean_pred_np = np.zeros((4000, 3501))
+al_uq_np = np.zeros((4000, 3501))
+ep_uq_np = np.zeros((4000, 3501))
+
+labels_augmented_np = np.zeros((4000, 3501))
 
 count = 0
 for number, file_list in sorted(grouped_files.items()):
@@ -77,22 +86,29 @@ for number, file_list in sorted(grouped_files.items()):
         labels_augmented = np.load(labels_file)
         labels_augmented = -labels_augmented
         labels_augmented_np[count] = labels_augmented
+        del labels_augmented
     if "2.npy" in labels_file:
         labels_augmented = np.load(labels_file)
         labels_augmented = -labels_augmented
         labels_augmented_np[count] = labels_augmented
+        del labels_augmented
     else:
         labels_augmented = np.load(labels_file)
         labels_augmented_np[count] = labels_augmented
+        del labels_augmented
         
     labels = np.load(labels_file)
     labels_np[count] = labels
+    del labels
     mean_pred = np.load(mean_pred_file)
     al_uq = np.load(al_uq_file)
     ep_uq = np.load(ep_uq_file)
     mean_pred_np[count] = mean_pred
     al_uq_np[count] = np.sqrt(al_uq)
     ep_uq_np[count] = np.sqrt(ep_uq)
+    del mean_pred
+    del al_uq
+    del ep_uq
     count += 1
 
 print("Max label: ", np.max(labels_np))
@@ -157,6 +173,25 @@ plt.xlabel("Number of bins")
 plt.ylabel("ENCE")
 #plt.yscale("log")
 plt.savefig("../assets/ENCE.pdf")
+plt.close()
+
+fig, ax = plt.subplots(figsize=(24, 12))
+
+# Main plot
+ax.plot(range(1, 100, 1), ENCE_bins_correct_augmentation, label="ENCE")
+ax.set_xlabel("Number of bins")
+ax.set_ylabel("ENCE")
+ax.legend()
+
+# Inset zoom on x = [0, 15]
+axins = inset_axes(ax, width="40%", height="40%", loc="upper right")
+axins.plot(range(1, 100, 1), ENCE_bins_correct_augmentation)
+axins.set_xlim(0, 15)
+axins.set_ylim(min(ENCE_bins_correct_augmentation[:15]), 
+               max(ENCE_bins_correct_augmentation[:15]))
+
+# Save figure
+plt.savefig("../assets/ENCE_with_zoom.pdf")
 plt.close()
 
 fig = plt.figure(figsize=(24, 12))

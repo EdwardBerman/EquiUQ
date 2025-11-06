@@ -63,13 +63,14 @@ ax.add_patch(left_poly)
 right_poly = Polygon([[x2, 0], [1, 0], [1, 1], [x1, 1], [x2, 0]], closed=True, facecolor="green", alpha=0.25, edgecolor=None)
 ax.add_patch(right_poly)
 
+text_size = 48
 # X-axis annotations: [0, 0.75] as "c" and [0.75, 1] as "1 - c"
 y_anno = -0.06  # slightly below the x-axis
 ax.plot([0, 0.75], [y_anno, y_anno], linewidth=3, color="blue")
-ax.text(0.375, y_anno - 0.03, "r", ha="center", va="top")
+ax.text(0.375, y_anno - 0.03, "r", ha="center", va="top", fontsize=text_size)
 
 ax.plot([0.75, 1.0], [y_anno, y_anno], linewidth=3, color="green")
-ax.text(0.875, y_anno - 0.03, "1 - r", ha="center", va="top")
+ax.text(0.875, y_anno - 0.03, "1 - r", ha="center", va="top", fontsize=text_size)
 
 # Mark the split point at x=0.75 on the axis
 ax.plot([0.75, 0.75], [-0.005, 0.005], color="black", linewidth=1.5)
@@ -78,12 +79,13 @@ ax.plot([0.75, 0.75], [-0.005, 0.005], color="black", linewidth=1.5)
 # Horizontal dotted line (parallel to x-axis) labeled "Gx"
 gy = 0.6
 ax.plot([0, 1], [gy, gy], linestyle=":", linewidth=2, color="black")
-ax.text(1.01, gy, "Gx", ha="left", va="center")
+ax.text(1.01, gy, "Gx", ha="left", va="center", fontsize=text_size)
 
 # Vertical dotted line (parallel to y-axis) labeled "F"
 fx = 0.6
 ax.plot([fx, fx], [0, 1], linestyle=":", linewidth=2, color="black")
-ax.text(fx, 1.01, "F", ha="center", va="bottom")
+
+ax.text(fx, 1.01, "F", ha="center", va="bottom", fontsize=text_size)
 
 # Ticks and labels
 ax.set_xlim(-0.02, 1.05)

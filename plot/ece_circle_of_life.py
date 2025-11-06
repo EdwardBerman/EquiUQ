@@ -330,3 +330,214 @@ ax.axis('off')
 
 plt.savefig('../assets/ece_circle_of_life_c.pdf', dpi=300, bbox_inches='tight')
 plt.close()
+
+# --------------------------- (d) all three side-by-side ---------------------------
+def draw_panel(ax, variant):
+    # Radii and base geometry
+    inner_radius = 0.5
+    outer_radius = 1.0
+    circle_radius = 0.75
+
+    theta_full = np.linspace(0, 2 * np.pi, 500)
+    x_outer = outer_radius * np.cos(theta_full)
+    y_outer = outer_radius * np.sin(theta_full)
+    x_inner = inner_radius * np.cos(theta_full)
+    y_inner = inner_radius * np.sin(theta_full)
+
+    # Fill annulus
+    ax.fill(x_outer, y_outer, color='lightgray')
+    ax.fill(x_inner, y_inner, color='white', zorder=2)
+
+    # Right half outline (and hatch for a/b)
+    theta_right = np.linspace(-np.pi/2, np.pi/2, 250)
+    x_outer_r = outer_radius * np.cos(theta_right)
+    y_outer_r = outer_radius * np.sin(theta_right)
+    x_inner_r = inner_radius * np.cos(theta_right)
+    y_inner_r = inner_radius * np.sin(theta_right)
+    x_right = np.concatenate([x_outer_r, x_inner_r[::-1]])
+    y_right = np.concatenate([y_outer_r, y_inner_r[::-1]])
+
+    if variant in ('a', 'b'):
+        ax.fill(x_right, y_right, facecolor='none', edgecolor='gray', hatch='//', linewidth=0.0, zorder=1)
+    else:
+        ax.fill(x_right, y_right, facecolor='none', edgecolor='gray', linewidth=0.0, zorder=1)
+
+    # Hollow circle helper
+    def draw_hollow_circle(x, y, color):
+        circle = plt.Circle((x, y), 0.05, fill=True, edgecolor=color, facecolor=color, linewidth=2)
+        ax.add_patch(circle)
+
+    # Angles (avoid axes overlap)
+    n = 10
+    epsilon = np.pi / (2 * n + 1)
+    angles_upper = np.linspace(epsilon, np.pi - epsilon, n)
+    angles_lower = np.linspace(-np.pi + epsilon, -epsilon, n)
+
+    # Upper half dots
+    for i, ang in enumerate(angles_upper):
+        x = circle_radius * np.cos(ang)
+        y = circle_radius * np.sin(ang)
+        if x > 0:
+            draw_hollow_circle(x, y, 'orange' if i == 2 else 'blue')
+        else:
+            draw_hollow_circle(x, y, 'blue')
+
+    # Lower half dots
+    for i, ang in enumerate(angles_lower):
+        x = circle_radius * np.cos(ang)
+        y = circle_radius * np.sin(ang)
+        # Right: 1 yellow then blue
+        draw_hollow_circle(x, y, 'orange' if i == 0 else 'blue')
+        # Left: all yellow
+        draw_hollow_circle(-x, y, 'orange')
+
+    # Axes
+    ax.plot([-1.2, 1.2], [0, 0], color='black', linewidth=1.2)
+    ax.plot([0, 0], [-1.2, 1.2], color='black', linewidth=1.2)
+
+    # Reflection arrows for a/b; rotation arrow for c
+    if variant in ('a', 'b'):
+        def draw_reflection_arrow(x_pos):
+            arrow = FancyArrowPatch((x_pos, 0.3), (x_pos, -0.3),
+                                    arrowstyle='<->', mutation_scale=15,
+                                    color='black', linewidth=1.5, zorder=3)
+            ax.add_patch(arrow)
+        draw_reflection_arrow(-0.25)
+        draw_reflection_arrow(0.25)
+    else:
+        # rotation arrow (curved)
+        arc_path = Path.arc(40, 320)
+        trans = (Affine2D().scale(0.25, 0.25).translate(0, 0) + ax.transData)
+        arrow = FancyArrowPatch(path=arc_path, transform=trans,
+                                arrowstyle='-|>', mutation_scale=18,
+                                lw=2, color='black', facecolor='black', zorder=4)
+        ax.add_patch(arrow)
+
+    # Format
+    ax.set_aspect('equal')
+    ax.set_xlim(-1.2, 1.2)
+    ax.set_ylim(-1.2, 1.2)
+    ax.axis('off')
+
+# Build the combined figure
+set_rc_params(fontsize=30)  # keep your styling consistent
+fig, axes = plt.subplots(1, 3, figsize=(18, 6), constrained_layout=True)
+
+draw_panel(axes[0], 'a')
+axes[0].set_title('Confidence Fibers of Reflection Invariant Model (a)', fontsize=20, pad=10)
+
+draw_panel(axes[1], 'b')
+axes[1].set_title('Confidence Fiber of Reflection Invariant Model (b)', fontsize=20, pad=10)
+
+draw_panel(axes[2], 'c')
+axes[2].set_title('Confidence Fiber of Rotation Invariant Model (c)', fontsize=20, pad=10)
+
+plt.savefig('../assets/ece_circle_of_life_abc.pdf', dpi=300, bbox_inches='tight')
+plt.close()
+
+# Panel drawer
+def draw_panel(ax, variant):
+    inner_radius = 0.5
+    outer_radius = 1.0
+    circle_radius = 0.75
+
+    # annulus
+    theta_full = np.linspace(0, 2 * np.pi, 500)
+    x_outer = outer_radius * np.cos(theta_full)
+    y_outer = outer_radius * np.sin(theta_full)
+    x_inner = inner_radius * np.cos(theta_full)
+    y_inner = inner_radius * np.sin(theta_full)
+
+    ax.fill(x_outer, y_outer, color='lightgray')
+    ax.fill(x_inner, y_inner, color='white', zorder=2)
+
+    # right half
+    theta_right = np.linspace(-np.pi/2, np.pi/2, 250)
+    x_outer_r = outer_radius * np.cos(theta_right)
+    y_outer_r = outer_radius * np.sin(theta_right)
+    x_inner_r = inner_radius * np.cos(theta_right)
+    y_inner_r = inner_radius * np.sin(theta_right)
+    x_right = np.concatenate([x_outer_r, x_inner_r[::-1]])
+    y_right = np.concatenate([y_outer_r, y_inner_r[::-1]])
+
+    if variant == 'a':
+        ax.fill(x_right, y_right, facecolor='none', edgecolor='gray', hatch='//', linewidth=0.0, zorder=1)
+    else:
+        ax.fill(x_right, y_right, facecolor='none', edgecolor='gray', linewidth=0.0, zorder=1)
+
+    # dots
+    def draw_hollow_circle(x, y, color):
+        circle = plt.Circle((x, y), 0.05, fill=True, edgecolor=color, facecolor=color, linewidth=2)
+        ax.add_patch(circle)
+
+    n = 10
+    epsilon = np.pi/(2*n+1)
+    angles_upper = np.linspace(epsilon, np.pi-epsilon, n)
+    angles_lower = np.linspace(-np.pi+epsilon, -epsilon, n)
+
+    for i, ang in enumerate(angles_upper):
+        x = circle_radius*np.cos(ang)
+        y = circle_radius*np.sin(ang)
+        if x > 0:
+            draw_hollow_circle(x,y,'orange' if i==2 else 'blue')
+        else:
+            draw_hollow_circle(x,y,'blue')
+
+    for i, ang in enumerate(angles_lower):
+        x = circle_radius*np.cos(ang)
+        y = circle_radius*np.sin(ang)
+        draw_hollow_circle(x,y,'orange' if i==0 else 'blue')
+        draw_hollow_circle(-x,y,'orange')
+
+    # axes
+    ax.plot([-1.2,1.2],[0,0],color='black',linewidth=1.2)
+    ax.plot([0,0],[-1.2,1.2],color='black',linewidth=1.2)
+
+    # arrows
+    if variant in ('a','b'):
+        def draw_reflection_arrow(x_pos):
+            arrow = FancyArrowPatch((x_pos,0.3),(x_pos,-0.3),
+                                    arrowstyle='<->',mutation_scale=15,
+                                    color='black',linewidth=1.5,zorder=3)
+            ax.add_patch(arrow)
+        draw_reflection_arrow(-0.25)
+        draw_reflection_arrow(0.25)
+    else:
+        arc_path = Path.arc(40,320)
+        trans = (Affine2D().scale(0.25,0.25).translate(0,0) + ax.transData)
+        arrow = FancyArrowPatch(path=arc_path, transform=trans,
+                                arrowstyle='-|>', mutation_scale=18,
+                                lw=2, color='black', facecolor='black', zorder=4)
+        ax.add_patch(arrow)
+
+    ax.set_aspect('equal')
+    ax.set_xlim(-1.2,1.2)
+    ax.set_ylim(-1.2,1.2)
+    ax.axis('off')
+
+# ---------- Combined figure ----------
+set_rc_params(fontsize=30)
+fig, axes = plt.subplots(1,3,figsize=(18,6))
+
+draw_panel(axes[0],'a')
+draw_panel(axes[1],'b')
+draw_panel(axes[2],'c')
+
+# Shared title
+fig.suptitle("Confidence Fibers for Reflection vs Rotation Invariant Models",
+             fontsize=20, y=0.92)
+
+# Short labels under each subplot
+labels = [
+    "(a) Reflection invariant",
+    "(b) Reflection invariant",
+    "(c) Rotation invariant"
+]
+for axi, lab in zip(axes, labels):
+    axi.text(0.5, -0.08, lab, transform=axi.transAxes,
+             ha="center", va="top", fontsize=18)
+
+plt.subplots_adjust(wspace=0.3, top=0.85, bottom=0.15)
+plt.savefig('../assets/ece_circle_of_life_abc.pdf', dpi=300, bbox_inches='tight')
+plt.close()
+

@@ -147,37 +147,35 @@ std_dev1 = 0.1
 std_dev2 = 0.2
 
 # Plot 1 (top-right): f(a_x)=cos^2, f(a_+)=cos^2, h(x)=cos^2
-ax[0, 2].plot(x, cos2, label=r'$f(a_{\times})$', color='black')
-ax[0, 2].plot(x, cos2, label=r'$f(a_{+})$', color='red')
-ax[0, 2].plot(x, cos2, label=r'$h(x)$', color='blue')
+ax[0, 2].plot(x, cos2, label=r'$f(a_{\times}) = \cos^2(x)$', color='black')
+ax[0, 2].plot(x, cos2, label=r'$f(a_{+}) = \cos^2(x)$', color='red')
+ax[0, 2].plot(x, cos2, label=r'$h(x) = \cos^2(x)$', color='blue')
 ax[0, 2].fill_between(x, cos2 - std_dev1, cos2 + std_dev1,
-                    color='blue', alpha=0.2, label=r'$s=0.1 \vec{1}$')
-ax[0, 2].legend()
-ax[0, 2].set_title(r'$CH_4(+/\times)$ Function Plot')
+                    color='blue', alpha=0.2, label=r'$s=c_1 \vec{1}$')
+# move legend to side
+ax[0, 2].legend(loc='center left')
 
 # Plot 2 (middle-right): f(b)=cos^2, f(c)=\sin^2, h(x)=1
-ax[1, 2].plot(x, cos2, label=r'$f(b)$', color='black')
-ax[1, 2].plot(x, sin2, label=r'$f(c)$', color='red')
+ax[1, 2].plot(x, cos2, label=r'$f(b) = \cos^2(x)$', color='black')
+ax[1, 2].plot(x, sin2, label=r'$f(c) = \sin^2(x)$', color='red')
 ax[1, 2].plot(x, 0.5*ones, label=r'$h(x)=0.5$', color='blue')
 ax[1, 2].fill_between(x, 0.5 - std_dev1, 0.5 + std_dev1,
-                    color='blue', alpha=0.2, label=r'$s=0.1 \vec{1}$')
+                    color='blue', alpha=0.2, label=r'$s=c_1 \vec{1}$')
 ax[1, 2].legend()
-ax[1, 2].set_title(r'$H_2O/SO_2$ Function Plot')
 
 # Plot 3 (bottom-right): f(d)=\sin^2, h(x)=\sin^2 (all three sin^2)
-ax[2, 2].plot(x, sin2, label=r'$f(d)$', color='black')
-ax[2, 2].plot(x, sin2, label=r'$h(x)$', color='red')
+ax[2, 2].plot(x, sin2, label=r'$f(d) = \sin^2(x)$', color='black')
+ax[2, 2].plot(x, sin2, label=r'$h(x) = \sin^2(x)$', color='red')
 ax[2, 2].fill_between(x, sin2 - std_dev2, sin2 + std_dev2,
-                    color='red', alpha=0.2,label=r'$s=0.2 \vec{1}$')
+                    color='red', alpha=0.2,label=r'$s=c_2 \vec{1}$')
 ax[2, 2].legend()
-ax[2, 2].set_title(r'$NH_3$ Function Plot')
 
 # Empty bottom-left stays off
 ax[2, 0].axis('off')
 
 fig.tight_layout()
-plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.92,
-                    hspace=0.3, wspace=0.3)
+#plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.92,
+                    #hspace=0.3, wspace=0.3)
 
 plt.savefig('../assets/pc.pdf', dpi=300)
 
