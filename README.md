@@ -4,6 +4,8 @@ This repository contains all code for [On Uncertainty Calibration for Equivarian
 
 ![image](assets/background.png)
 
+Reflections [here](https://edwardberman.github.io/EquiUQ/)
+
 # Running Experiments
 
 First, clone the repo (and the submodules!) via `git clone --recurse-submodules https://github.com/EdwardBerman/EquivariantUQBounds.git`
