@@ -4,7 +4,7 @@ This repository contains all code for [On Uncertainty Calibration for Equivarian
 
 ![image](assets/background.png)
 
-Reflections [here](https://edwardberman.github.io/EquiUQ/)
+Blog post [here](https://edwardberman.github.io/EquiUQ/)
 
 # Running Experiments
 
